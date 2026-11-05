@@ -88,6 +88,8 @@ print(plot_a)
 
 # question b
 
+For model (iv), I defined the annual visit index as $t_{ki}=\operatorname{round}(a_{ki}-a_{k1})$, where $a_{k1}$ is girl $k$’s age at her first observed visit. This preserves gaps between visits. For example, two consecutive measurements taken about two years apart have a lag of two and a residual correlation of $\rho^2$, conditional on the random intercept. The annual index also gave a lower AIC than numbering the observed visits consecutively ($-4324.630$ versus $-4307.631$).
+
 
 ```{r}
 model_data <- analysis_data |>
@@ -527,7 +529,9 @@ Under $H_0$, the mean is linear in age. Under $H_A$, at least one of the higher-
 The likelihood ratio statistic was $2(\ell_3-\ell_2)=83.271$. Under $H_0$, this statistic has an approximate chi-squared distribution with $2$ degrees of freedom, one for each additional coefficient in model (3). The $p$-value was less than $0.0001$, so I reject $H_0$ at the $0.05$ level and retain the cubic mean model (3).
 
 
+# question e
 
+Of the two options, I would recommend the cubic mean model (3). The likelihood ratio test showed that adding the quadratic and cubic age terms improved the fit ($p<0.0001$). The fitted curve also captures a pattern that matters for interpretation: average FEV₁ divided by height squared rises most quickly around age 12 and levels off in the late teens. Model (2) assumes a constant rate of change throughout childhood and adolescence. I would use model (3) to describe the trend over the observed age range of about 6.4 to 18.7 years.  
 
 
 

@@ -1564,6 +1564,13 @@ print(plot_a)</code></pre>
 </div>
 <div id="question-b" class="section level1" number="2">
 <h1><span class="header-section-number">2</span> question b</h1>
+<p>For model (iv), I defined the annual visit index as <span class="math inline">\(t_{ki}=\operatorname{round}(a_{ki}-a_{k1})\)</span>,
+where <span class="math inline">\(a_{k1}\)</span> is girl <span class="math inline">\(k\)</span>’s age at her first observed visit. This
+preserves gaps between visits. For example, two consecutive measurements
+taken about two years apart have a lag of two and a residual correlation
+of <span class="math inline">\(\rho^2\)</span>, conditional on the
+random intercept. The annual index also gave a lower AIC than numbering
+the observed visits consecutively (<span class="math inline">\(-4324.630\)</span> versus <span class="math inline">\(-4307.631\)</span>).</p>
 <pre class="r"><code>model_data &lt;- analysis_data |&gt;
   arrange(subject_id, age_years) |&gt;
   group_by(subject_id) |&gt;
@@ -2131,6 +2138,17 @@ chi-squared distribution with <span class="math inline">\(2\)</span>
 degrees of freedom, one for each additional coefficient in model (3).
 The <span class="math inline">\(p\)</span>-value was less than <span class="math inline">\(0.0001\)</span>, so I reject <span class="math inline">\(H_0\)</span> at the <span class="math inline">\(0.05\)</span> level and retain the cubic mean
 model (3).</p>
+</div>
+<div id="question-e-1" class="section level1" number="6">
+<h1><span class="header-section-number">6</span> question e</h1>
+<p>Of the two options, I would recommend the cubic mean model (3). The
+likelihood ratio test showed that adding the quadratic and cubic age
+terms improved the fit (<span class="math inline">\(p&lt;0.0001\)</span>). The fitted curve also
+captures a pattern that matters for interpretation: average FEV₁ divided
+by height squared rises most quickly around age 12 and levels off in the
+late teens. Model (2) assumes a constant rate of change throughout
+childhood and adolescence. I would use model (3) to describe the trend
+over the observed age range of about 6.4 to 18.7 years.</p>
 </div>
 
 
