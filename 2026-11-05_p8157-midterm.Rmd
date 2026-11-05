@@ -463,6 +463,37 @@ ggplot() +
 ```
 
 
+```{r}
+# formula(fit_linear)
+# fit_linear$modelStruct$corStruct
+# c(cubic = nobs(fit_cubic), linear = nobs(fit_linear))
+# 
+# age_12 <- data.frame(age_centered = 0)
+# c(
+#   cubic  = predict(fit_cubic, newdata = age_12, level = 0),
+#   linear = predict(fit_linear, newdata = age_12, level = 0)
+# )
+```
+
+
+# question d
+
+The curve shows how the girls’ average $FEV_1$ divided by height squared varies with age. This measure changes little around age 7, then rises, with the fastest increase around age 12. The increase slows in the later teen years, and the curve dips slightly after about age 17.5.   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
