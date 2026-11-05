@@ -482,10 +482,49 @@ The curve shows how the girls’ average $FEV_1$ divided by height squared varie
 
 
 
+# question e
 
 
+```{r}
+# Check that both models used ML and the same number of observations.
+stopifnot(
+  fit_linear$method == "ML",
+  fit_cubic$method == "ML",
+  nobs(fit_linear) == nobs(fit_cubic)
+)
+
+# Compare the reduced linear model with the full cubic model.
+lrt_result <- anova(fit_linear, fit_cubic)
+
+lrt_table <- data.frame(
+  Comparison = "Model (2) vs. Model (3)",
+  `LR statistic` = lrt_result[["L.Ratio"]][2],
+  df = diff(lrt_result[["df"]]),
+  `p-value` = format.pval(lrt_result[["p-value"]][2], digits = 3),
+  check.names = FALSE
+)
+
+knitr::kable(
+  lrt_table,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Likelihood ratio test comparing the linear and cubic mean models"
+)
+```
 
 
+I used a likelihood ratio test to compare the linear mean model (2) with the cubic mean model (3). Both models used the same observations and the dependence structure selected in part (b), which includes a random intercept and exponential residual correlation with a nugget. I fitted both models by maximum likelihood because they differ in their fixed effects.
+
+Let $\beta_2$ and $\beta_3$ denote the coefficients of the squared and cubed centered-age terms, respectively. The hypotheses were
+$$
+\begin{aligned}
+H_0 &: \beta_2 = \beta_3 = 0,\\
+H_A &: \beta_2 \ne 0 \text{ or } \beta_3 \ne 0.
+\end{aligned}
+$$
+Under $H_0$, the mean is linear in age. Under $H_A$, at least one of the higher-order age terms is needed.
+
+The likelihood ratio statistic was $2(\ell_3-\ell_2)=83.271$. Under $H_0$, this statistic has an approximate chi-squared distribution with $2$ degrees of freedom, one for each additional coefficient in model (3). The $p$-value was less than $0.0001$, so I reject $H_0$ at the $0.05$ level and retain the cubic mean model (3).
 
 
 

@@ -2064,6 +2064,74 @@ with age. This measure changes little around age 7, then rises, with the
 fastest increase around age 12. The increase slows in the later teen
 years, and the curve dips slightly after about age 17.5.</p>
 </div>
+<div id="question-e" class="section level1" number="5">
+<h1><span class="header-section-number">5</span> question e</h1>
+<pre class="r"><code># Check that both models used ML and the same number of observations.
+stopifnot(
+  fit_linear$method == &quot;ML&quot;,
+  fit_cubic$method == &quot;ML&quot;,
+  nobs(fit_linear) == nobs(fit_cubic)
+)
+
+# Compare the reduced linear model with the full cubic model.
+lrt_result &lt;- anova(fit_linear, fit_cubic)
+
+lrt_table &lt;- data.frame(
+  Comparison = &quot;Model (2) vs. Model (3)&quot;,
+  `LR statistic` = lrt_result[[&quot;L.Ratio&quot;]][2],
+  df = diff(lrt_result[[&quot;df&quot;]]),
+  `p-value` = format.pval(lrt_result[[&quot;p-value&quot;]][2], digits = 3),
+  check.names = FALSE
+)
+
+knitr::kable(
+  lrt_table,
+  digits = 3,
+  row.names = FALSE,
+  caption = &quot;Likelihood ratio test comparing the linear and cubic mean models&quot;
+)</code></pre>
+<table>
+<caption>Likelihood ratio test comparing the linear and cubic mean
+models</caption>
+<thead>
+<tr class="header">
+<th align="left">Comparison</th>
+<th align="right">LR statistic</th>
+<th align="right">df</th>
+<th align="left">p-value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Model (2) vs. Model (3)</td>
+<td align="right">83.271</td>
+<td align="right">2</td>
+<td align="left">&lt;2e-16</td>
+</tr>
+</tbody>
+</table>
+<p>I used a likelihood ratio test to compare the linear mean model (2)
+with the cubic mean model (3). Both models used the same observations
+and the dependence structure selected in part (b), which includes a
+random intercept and exponential residual correlation with a nugget. I
+fitted both models by maximum likelihood because they differ in their
+fixed effects.</p>
+<p>Let <span class="math inline">\(\beta_2\)</span> and <span class="math inline">\(\beta_3\)</span> denote the coefficients of the
+squared and cubed centered-age terms, respectively. The hypotheses were
+<span class="math display">\[
+\begin{aligned}
+H_0 &amp;: \beta_2 = \beta_3 = 0,\\
+H_A &amp;: \beta_2 \ne 0 \text{ or } \beta_3 \ne 0.
+\end{aligned}
+\]</span> Under <span class="math inline">\(H_0\)</span>, the mean is
+linear in age. Under <span class="math inline">\(H_A\)</span>, at least
+one of the higher-order age terms is needed.</p>
+<p>The likelihood ratio statistic was <span class="math inline">\(2(\ell_3-\ell_2)=83.271\)</span>. Under <span class="math inline">\(H_0\)</span>, this statistic has an approximate
+chi-squared distribution with <span class="math inline">\(2\)</span>
+degrees of freedom, one for each additional coefficient in model (3).
+The <span class="math inline">\(p\)</span>-value was less than <span class="math inline">\(0.0001\)</span>, so I reject <span class="math inline">\(H_0\)</span> at the <span class="math inline">\(0.05\)</span> level and retain the cubic mean
+model (3).</p>
+</div>
 
 
 
