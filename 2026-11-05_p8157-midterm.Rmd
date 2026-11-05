@@ -15,6 +15,7 @@ output:
 
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
+library(nlme)
 
 load("data/Six Cities.RData")
 ```
@@ -85,35 +86,300 @@ print(plot_a)
 ```
 
 
+# question b
+
+
+```{r}
+model_data <- analysis_data |>
+  arrange(subject_id, age_years) |>
+  group_by(subject_id) |>
+  mutate(
+    annual_visit = as.integer(round(age_years - first(age_years)))
+  ) |>
+  ungroup() |>
+  mutate(
+    subject_id = factor(subject_id),
+    age_centered = age_years - 12,
+    age_group = factor(floor(age_years))
+  )
+```
+
+
+```{r}
+# Check that each correlation time variable is unique within a subject.
+stopifnot(
+  anyDuplicated(model_data[c("subject_id", "annual_visit")]) == 0L,
+  anyDuplicated(model_data[c("subject_id", "age_years")]) == 0L
+)
+
+# Use the same cubic fixed-effects formula for all eight models.
+cubic_mean <- fev1_over_height_sq ~
+  age_centered + I(age_centered^2) + I(age_centered^3)
+```
+
+
+## part I
+
+```{r}
+# Fit the Gaussian independence model used as the baseline in the slides.
+fit_i <- glm(
+  formula = cubic_mean,
+  data = model_data,
+  family = gaussian(),
+  na.action = na.fail
+)
+```
+
+
+## part II
+
+
+```{r}
+# Allow each subject to have a different intercept.
+fit_ii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part III
+
+```{r}
+# Allow the random intercept and linear age slope to be correlated.
+fit_iii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ age_centered | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
 
 
 
+## part IV
+
+```{r}
+# Model residual correlation by the lag between annual visits.
+fit_iv <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corAR1(form = ~ annual_visit | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part V
+
+```{r}
+# Model residual correlation using the exact age difference.
+fit_v <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corExp(
+    form = ~ age_years | subject_id,
+    nugget = FALSE
+  ),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
 
 
 
+## part VI
+
+```{r}
+# Add an independent measurement-error component through the nugget.
+fit_vi <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corExp(
+    form = ~ age_years | subject_id,
+    nugget = TRUE
+  ),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part VII
+
+```{r}
+# Allow the residual standard deviation to differ across age groups.
+fit_vii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  weights = varIdent(form = ~ 1 | age_group),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part VIII
+
+
+```{r}
+# Give the optimizer more iterations and function evaluations.
+fit_viii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ age_centered | subject_id),
+  weights = varIdent(form = ~ 1 | age_group),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail,
+  control = lmeControl(msMaxIter = 300, msMaxEval = 600)
+)
+
+logLik(fit_viii)
+VarCorr(fit_viii)
+```
+
+
+## table one: AIC and likelihood
+
+```{r}
+fits <- list(
+  "(i)"    = fit_i,
+  "(ii)"   = fit_ii,
+  "(iii)"  = fit_iii,
+  "(iv)"   = fit_iv,
+  "(v)"    = fit_v,
+  "(vi)"   = fit_vi,
+  "(vii)"  = fit_vii,
+  "(viii)" = fit_viii
+)
+```
+
+
+```{r}
+# Verify that all models were fitted to the same number of observations.
+n_used <- vapply(fits, function(fit) length(residuals(fit)), integer(1))
+stopifnot(all(n_used == nrow(model_data)))
+
+# Rank models using the unrounded AIC values.
+fit_table <- tibble(
+  model = names(fits),
+  log_likelihood = vapply(
+    fits, function(fit) as.numeric(logLik(fit)), numeric(1)
+  ),
+  AIC = vapply(fits, AIC, numeric(1))
+) |>
+  arrange(AIC)
+
+best_two <- head(fit_table$model, 2)
+```
+
+
+```{r}
+knitr::kable(
+  fit_table,
+  caption = "Model fit comparison",
+  col.names = c("Model", "Log-likelihood", "AIC"),
+  digits = 3,
+  align = c("l", "r", "r"),
+  row.names = FALSE
+)
+```
 
 
 
+## table two: fixed effects and SE
+
+```{r}
+summary(fit_vi)
+summary(fit_iv)
+```
 
 
+```{r}
+# Extract fixed-effect estimates and their standard errors.
+estimate_table <- bind_rows(lapply(best_two, function(model_id) {
+  fit <- fits[[model_id]]
+
+  coefficient_summary <- if (inherits(fit, "lme")) {
+    summary(fit)$tTable
+  } else {
+    coef(summary(fit))
+  }
+
+  tibble(
+    model = model_id,
+    term = rownames(coefficient_summary),
+    estimate = coefficient_summary[, 1],
+    standard_error = coefficient_summary[, 2]
+  )
+}))
+```
 
 
+```{r}
+knitr::kable(
+  estimate_table,
+  caption = "Fixed-effect estimates for the two models with the lowest AIC",
+  col.names = c("Model", "Term", "Estimate", "Standard error"),
+  digits = 5,
+  align = c("l", "l", "r", "r"),
+  row.names = FALSE
+)
+```
 
 
+Table 1 compares eight covariance structures fitted by maximum likelihood
+to the same 1,789 observations from 196 girls. Model (vi) had the lowest
+AIC ($-4335.145$), followed by model (iv) ($-4324.630$). The AIC
+difference was $10.515$ in favor of model (vi).
 
+Let $a_{ki}$ be the age in years at visit $i$ for girl $k$, and let
+$x_{ki}=a_{ki}-12$. Both selected models have the form
+$$
+Y_{ki}=\beta_0+\beta_1x_{ki}+\beta_2x_{ki}^2+\beta_3x_{ki}^3
+       +b_k+\epsilon_{ki},
+$$
+where $Y_{ki}=\mathrm{FEV}_{1,ki}/\mathrm{height}_{ki}^{2}$.
+The random intercept $b_k\sim N(0,\tau^2)$ is independent of the
+mean-zero Gaussian residual vector for girl $k$. Observations from
+different girls are independent, and parameters are estimated separately
+for each model.
 
+In model (vi), the residual covariance decays with the exact age
+difference and includes an independent measurement-error component:
+$$
+\operatorname{Cov}(\epsilon_{ki},\epsilon_{kj})
+=\sigma_w^2\exp\!\left(-\frac{|a_{ki}-a_{kj}|}{\phi}\right)
++\sigma_e^2\mathbf{1}\{i=j\}.
+$$
+The estimated random-intercept variance was $0.008012$. The estimated
+exponential process variance was $0.004013$, the range was $2.898$ years,
+and the independent error variance was $0.001578$. The independent
+component accounted for $28.2\%$ of the residual variance.
 
+In model (iv), let $t_{ki}=\operatorname{round}(a_{ki}-a_{k1})$ be the
+integer annual visit index. The residual covariance is
+$$
+\operatorname{Cov}(\epsilon_{ki},\epsilon_{kj})
+=\sigma^2\rho^{|t_{ki}-t_{kj}|}.
+$$
+The estimated random-intercept variance was $0.008859$, the residual
+variance was $0.004863$, and the residual correlation at a lag of one
+annual visit was $0.4359$.
 
-
-
-
-
-
-
-
-
-
-
+Table 2 reports the fixed-effect estimates and standard errors for both
+models. The estimates were similar. For example, the estimated slope
+at age 12 was $0.04100$ (SE $0.00141$) under model (vi) and $0.04061$
+(SE $0.00141$) under model (iv).
 
 
 
