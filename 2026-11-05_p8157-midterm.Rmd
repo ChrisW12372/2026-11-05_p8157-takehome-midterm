@@ -382,6 +382,85 @@ at age 12 was $0.04100$ (SE $0.00141$) under model (vi) and $0.04061$
 (SE $0.00141$) under model (iv).
 
 
+# question c
+
+```{r}
+# Model (3): reuse the cubic fit with dependence structure (vi).
+fit_cubic <- fit_vi
+plot_data <- getData(fit_cubic)
+
+# Model (2): refit the linear mean with the same dependence structure.
+fit_linear <- update(
+  fit_cubic,
+  fixed. = . ~ age_centered,
+  data = plot_data,
+  method = "ML"
+)
+```
+
+
+```{r}
+# Recover age in years and the response used in part (b).
+plot_data$age_years <- plot_data$age_centered + 12
+plot_data$y_observed <- eval(formula(fit_cubic)[[2L]], envir = plot_data)
+
+# Predict the marginal means over the observed age range.
+age_grid <- data.frame(
+  age_years = seq(
+    min(plot_data$age_years),
+    max(plot_data$age_years),
+    length.out = 200
+  )
+)
+age_grid$age_centered <- age_grid$age_years - 12
+```
+
+
+```{r}
+curve_data <- rbind(
+  transform(
+    age_grid,
+    fitted_mean = predict(fit_cubic, newdata = age_grid, level = 0),
+    model = "Model (3), cubic mean"
+  ),
+  transform(
+    age_grid,
+    fitted_mean = predict(fit_linear, newdata = age_grid, level = 0),
+    model = "Model (2), linear mean"
+  )
+)
+```
+
+
+```{r}
+ggplot() +
+  geom_point(
+    data = plot_data,
+    aes(x = age_years, y = y_observed),
+    colour = "grey45", alpha = 0.25, size = 0.9
+  ) +
+  geom_line(
+    data = curve_data,
+    aes(x = age_years, y = fitted_mean, colour = model, linetype = model),
+    linewidth = 1
+  ) +
+  scale_colour_manual(values = c(
+    "Model (3), cubic mean" = "#0072B2",
+    "Model (2), linear mean" = "#D55E00"
+  )) +
+  scale_linetype_manual(values = c(
+    "Model (3), cubic mean" = "solid",
+    "Model (2), linear mean" = "dashed"
+  )) +
+  labs(
+    x = "Age (years)",
+    y = expression(FEV[1] / height^2),
+    colour = NULL,
+    linetype = NULL
+  ) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+```
 
 
 
