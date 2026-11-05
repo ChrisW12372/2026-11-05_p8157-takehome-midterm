@@ -1,0 +1,540 @@
+---
+title: "2026-11-05_p8157-midterm"
+author: "Chris"
+date: "2026-11-05"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(nlme)
+
+load("data/Six Cities.RData")
+```
+
+
+
+# question a
+
+```{r}
+# Compute the outcome and retain girls with at least five usable visits.
+analysis_data <- topeka |>
+  transmute(
+    subject_id = id,
+    age_years = age,
+    height_m = height,
+    log_fev1 = log.FEV1
+  ) |>
+  filter(
+    !is.na(subject_id),
+    is.finite(age_years),
+    is.finite(height_m),
+    height_m > 0,
+    is.finite(log_fev1)
+  ) |>
+  mutate(fev1_over_height_sq = exp(log_fev1) / height_m^2) |>
+  group_by(subject_id) |>
+  filter(n() >= 5) |>
+  ungroup()
+```
+
+
+
+```{r}
+# Randomly select four eligible girls without replacement.
+set.seed(202611)
+eligible_ids <- unique(analysis_data$subject_id)
+selected_ids <- sample(eligible_ids, size = 4, replace = FALSE)
+
+trajectory_data <- analysis_data |>
+  filter(subject_id %in% selected_ids) |>
+  mutate(subject_id = factor(subject_id))
+```
+
+
+```{r}
+# Plot all eligible observations and highlight the four selected trajectories.
+plot_a <- ggplot(analysis_data, aes(x = age_years, y = fev1_over_height_sq)) +
+  geom_point(colour = "grey60", alpha = 0.35, size = 1.4) +
+  geom_line(
+    data = trajectory_data,
+    aes(group = subject_id, colour = subject_id),
+    linewidth = 0.9
+  ) +
+  geom_point(
+    data = trajectory_data,
+    aes(colour = subject_id),
+    size = 1.8
+  ) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(
+    x = "Age (years)",
+    y = expression(FEV[1] / height^2),
+    colour = "Subject ID"
+  ) +
+  theme_classic()
+
+print(plot_a)
+```
+
+
+# question b
+
+For model (iv), I defined the annual visit index as $t_{ki}=\operatorname{round}(a_{ki}-a_{k1})$, where $a_{k1}$ is girl $k$’s age at her first observed visit. This preserves gaps between visits. For example, two consecutive measurements taken about two years apart have a lag of two and a residual correlation of $\rho^2$, conditional on the random intercept. The annual index also gave a lower AIC than numbering the observed visits consecutively ($-4324.630$ versus $-4307.631$).
+
+
+```{r}
+model_data <- analysis_data |>
+  arrange(subject_id, age_years) |>
+  group_by(subject_id) |>
+  mutate(
+    annual_visit = as.integer(round(age_years - first(age_years)))
+  ) |>
+  ungroup() |>
+  mutate(
+    subject_id = factor(subject_id),
+    age_centered = age_years - 12,
+    age_group = factor(floor(age_years))
+  )
+```
+
+
+```{r}
+# Check that each correlation time variable is unique within a subject.
+stopifnot(
+  anyDuplicated(model_data[c("subject_id", "annual_visit")]) == 0L,
+  anyDuplicated(model_data[c("subject_id", "age_years")]) == 0L
+)
+
+# Use the same cubic fixed-effects formula for all eight models.
+cubic_mean <- fev1_over_height_sq ~
+  age_centered + I(age_centered^2) + I(age_centered^3)
+```
+
+
+## part I
+
+```{r}
+# Fit the Gaussian independence model used as the baseline in the slides.
+fit_i <- glm(
+  formula = cubic_mean,
+  data = model_data,
+  family = gaussian(),
+  na.action = na.fail
+)
+```
+
+
+## part II
+
+
+```{r}
+# Allow each subject to have a different intercept.
+fit_ii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part III
+
+```{r}
+# Allow the random intercept and linear age slope to be correlated.
+fit_iii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ age_centered | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+
+## part IV
+
+```{r}
+# Model residual correlation by the lag between annual visits.
+fit_iv <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corAR1(form = ~ annual_visit | subject_id),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part V
+
+```{r}
+# Model residual correlation using the exact age difference.
+fit_v <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corExp(
+    form = ~ age_years | subject_id,
+    nugget = FALSE
+  ),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+
+## part VI
+
+```{r}
+# Add an independent measurement-error component through the nugget.
+fit_vi <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  correlation = corExp(
+    form = ~ age_years | subject_id,
+    nugget = TRUE
+  ),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part VII
+
+```{r}
+# Allow the residual standard deviation to differ across age groups.
+fit_vii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ 1 | subject_id),
+  weights = varIdent(form = ~ 1 | age_group),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail
+)
+```
+
+
+## part VIII
+
+
+```{r}
+# Give the optimizer more iterations and function evaluations.
+fit_viii <- lme(
+  fixed = cubic_mean,
+  random = reStruct(~ age_centered | subject_id),
+  weights = varIdent(form = ~ 1 | age_group),
+  data = model_data,
+  method = "ML",
+  na.action = na.fail,
+  control = lmeControl(msMaxIter = 300, msMaxEval = 600)
+)
+
+logLik(fit_viii)
+VarCorr(fit_viii)
+```
+
+
+## table one: AIC and likelihood
+
+```{r}
+fits <- list(
+  "(i)"    = fit_i,
+  "(ii)"   = fit_ii,
+  "(iii)"  = fit_iii,
+  "(iv)"   = fit_iv,
+  "(v)"    = fit_v,
+  "(vi)"   = fit_vi,
+  "(vii)"  = fit_vii,
+  "(viii)" = fit_viii
+)
+```
+
+
+```{r}
+# Verify that all models were fitted to the same number of observations.
+n_used <- vapply(fits, function(fit) length(residuals(fit)), integer(1))
+stopifnot(all(n_used == nrow(model_data)))
+
+# Rank models using the unrounded AIC values.
+fit_table <- tibble(
+  model = names(fits),
+  log_likelihood = vapply(
+    fits, function(fit) as.numeric(logLik(fit)), numeric(1)
+  ),
+  AIC = vapply(fits, AIC, numeric(1))
+) |>
+  arrange(AIC)
+
+best_two <- head(fit_table$model, 2)
+```
+
+
+```{r}
+knitr::kable(
+  fit_table,
+  caption = "Model fit comparison",
+  col.names = c("Model", "Log-likelihood", "AIC"),
+  digits = 3,
+  align = c("l", "r", "r"),
+  row.names = FALSE
+)
+```
+
+
+
+## table two: fixed effects and SE
+
+```{r}
+summary(fit_vi)
+summary(fit_iv)
+```
+
+
+```{r}
+# Extract fixed-effect estimates and their standard errors.
+estimate_table <- bind_rows(lapply(best_two, function(model_id) {
+  fit <- fits[[model_id]]
+
+  coefficient_summary <- if (inherits(fit, "lme")) {
+    summary(fit)$tTable
+  } else {
+    coef(summary(fit))
+  }
+
+  tibble(
+    model = model_id,
+    term = rownames(coefficient_summary),
+    estimate = coefficient_summary[, 1],
+    standard_error = coefficient_summary[, 2]
+  )
+}))
+```
+
+
+```{r}
+knitr::kable(
+  estimate_table,
+  caption = "Fixed-effect estimates for the two models with the lowest AIC",
+  col.names = c("Model", "Term", "Estimate", "Standard error"),
+  digits = 5,
+  align = c("l", "l", "r", "r"),
+  row.names = FALSE
+)
+```
+
+
+Table 1 compares eight covariance structures fitted by maximum likelihood
+to the same 1,789 observations from 196 girls. Model (vi) had the lowest
+AIC ($-4335.145$), followed by model (iv) ($-4324.630$). The AIC
+difference was $10.515$ in favor of model (vi).
+
+Let $a_{ki}$ be the age in years at visit $i$ for girl $k$, and let
+$x_{ki}=a_{ki}-12$. Both selected models have the form
+$$
+Y_{ki}=\beta_0+\beta_1x_{ki}+\beta_2x_{ki}^2+\beta_3x_{ki}^3
+       +b_k+\epsilon_{ki},
+$$
+where $Y_{ki}=\mathrm{FEV}_{1,ki}/\mathrm{height}_{ki}^{2}$.
+The random intercept $b_k\sim N(0,\tau^2)$ is independent of the
+mean-zero Gaussian residual vector for girl $k$. Observations from
+different girls are independent, and parameters are estimated separately
+for each model.
+
+In model (vi), the residual covariance decays with the exact age
+difference and includes an independent measurement-error component:
+$$
+\operatorname{Cov}(\epsilon_{ki},\epsilon_{kj})
+=\sigma_w^2\exp\!\left(-\frac{|a_{ki}-a_{kj}|}{\phi}\right)
++\sigma_e^2\mathbf{1}\{i=j\}.
+$$
+The estimated random-intercept variance was $0.008012$. The estimated
+exponential process variance was $0.004013$, the range was $2.898$ years,
+and the independent error variance was $0.001578$. The independent
+component accounted for $28.2\%$ of the residual variance.
+
+In model (iv), let $t_{ki}=\operatorname{round}(a_{ki}-a_{k1})$ be the
+integer annual visit index. The residual covariance is
+$$
+\operatorname{Cov}(\epsilon_{ki},\epsilon_{kj})
+=\sigma^2\rho^{|t_{ki}-t_{kj}|}.
+$$
+The estimated random-intercept variance was $0.008859$, the residual
+variance was $0.004863$, and the residual correlation at a lag of one
+annual visit was $0.4359$.
+
+Table 2 reports the fixed-effect estimates and standard errors for both
+models. The estimates were similar. For example, the estimated slope
+at age 12 was $0.04100$ (SE $0.00141$) under model (vi) and $0.04061$
+(SE $0.00141$) under model (iv).
+
+
+# question c
+
+```{r}
+# Model (3): reuse the cubic fit with dependence structure (vi).
+fit_cubic <- fit_vi
+plot_data <- getData(fit_cubic)
+
+# Model (2): refit the linear mean with the same dependence structure.
+fit_linear <- update(
+  fit_cubic,
+  fixed. = . ~ age_centered,
+  data = plot_data,
+  method = "ML"
+)
+```
+
+
+```{r}
+# Recover age in years and the response used in part (b).
+plot_data$age_years <- plot_data$age_centered + 12
+plot_data$y_observed <- eval(formula(fit_cubic)[[2L]], envir = plot_data)
+
+# Predict the marginal means over the observed age range.
+age_grid <- data.frame(
+  age_years = seq(
+    min(plot_data$age_years),
+    max(plot_data$age_years),
+    length.out = 200
+  )
+)
+age_grid$age_centered <- age_grid$age_years - 12
+```
+
+
+```{r}
+curve_data <- rbind(
+  transform(
+    age_grid,
+    fitted_mean = predict(fit_cubic, newdata = age_grid, level = 0),
+    model = "Model (3), cubic mean"
+  ),
+  transform(
+    age_grid,
+    fitted_mean = predict(fit_linear, newdata = age_grid, level = 0),
+    model = "Model (2), linear mean"
+  )
+)
+```
+
+
+```{r}
+ggplot() +
+  geom_point(
+    data = plot_data,
+    aes(x = age_years, y = y_observed),
+    colour = "grey45", alpha = 0.25, size = 0.9
+  ) +
+  geom_line(
+    data = curve_data,
+    aes(x = age_years, y = fitted_mean, colour = model, linetype = model),
+    linewidth = 1
+  ) +
+  scale_colour_manual(values = c(
+    "Model (3), cubic mean" = "#0072B2",
+    "Model (2), linear mean" = "#D55E00"
+  )) +
+  scale_linetype_manual(values = c(
+    "Model (3), cubic mean" = "solid",
+    "Model (2), linear mean" = "dashed"
+  )) +
+  labs(
+    x = "Age (years)",
+    y = expression(FEV[1] / height^2),
+    colour = NULL,
+    linetype = NULL
+  ) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+# formula(fit_linear)
+# fit_linear$modelStruct$corStruct
+# c(cubic = nobs(fit_cubic), linear = nobs(fit_linear))
+# 
+# age_12 <- data.frame(age_centered = 0)
+# c(
+#   cubic  = predict(fit_cubic, newdata = age_12, level = 0),
+#   linear = predict(fit_linear, newdata = age_12, level = 0)
+# )
+```
+
+
+# question d
+
+The curve shows how the girls’ average $FEV_1$ divided by height squared varies with age. This measure changes little around age 7, then rises, with the fastest increase around age 12. The increase slows in the later teen years, and the curve dips slightly after about age 17.5.   
+
+
+
+# question e
+
+
+```{r}
+# Check that both models used ML and the same number of observations.
+stopifnot(
+  fit_linear$method == "ML",
+  fit_cubic$method == "ML",
+  nobs(fit_linear) == nobs(fit_cubic)
+)
+
+# Compare the reduced linear model with the full cubic model.
+lrt_result <- anova(fit_linear, fit_cubic)
+
+lrt_table <- data.frame(
+  Comparison = "Model (2) vs. Model (3)",
+  `LR statistic` = lrt_result[["L.Ratio"]][2],
+  df = diff(lrt_result[["df"]]),
+  `p-value` = format.pval(lrt_result[["p-value"]][2], digits = 3),
+  check.names = FALSE
+)
+
+knitr::kable(
+  lrt_table,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Likelihood ratio test comparing the linear and cubic mean models"
+)
+```
+
+
+I used a likelihood ratio test to compare the linear mean model (2) with the cubic mean model (3). Both models used the same observations and the dependence structure selected in part (b), which includes a random intercept and exponential residual correlation with a nugget. I fitted both models by maximum likelihood because they differ in their fixed effects.
+
+Let $\beta_2$ and $\beta_3$ denote the coefficients of the squared and cubed centered-age terms, respectively. The hypotheses were
+$$
+\begin{aligned}
+H_0 &: \beta_2 = \beta_3 = 0,\\
+H_A &: \beta_2 \ne 0 \text{ or } \beta_3 \ne 0.
+\end{aligned}
+$$
+Under $H_0$, the mean is linear in age. Under $H_A$, at least one of the higher-order age terms is needed.
+
+The likelihood ratio statistic was $2(\ell_3-\ell_2)=83.271$. Under $H_0$, this statistic has an approximate chi-squared distribution with $2$ degrees of freedom, one for each additional coefficient in model (3). The $p$-value was less than $0.0001$, so I reject $H_0$ at the $0.05$ level and retain the cubic mean model (3).
+
+
+# question e
+
+Of the two options, I would recommend the cubic mean model (3). The likelihood ratio test showed that adding the quadratic and cubic age terms improved the fit ($p<0.0001$). The fitted curve also captures a pattern that matters for interpretation: average $FEV_1$ divided by height squared rises most quickly around age 12 and levels off in the late teens. Model (2) assumes a constant rate of change throughout childhood and adolescence. I would use model (3) to describe the trend over the observed age range of about 6.4 to 18.7 years.  
+
+
+
+
+
+
+
+
+
+
