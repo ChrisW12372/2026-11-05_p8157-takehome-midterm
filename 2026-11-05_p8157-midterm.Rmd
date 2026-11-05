@@ -1,0 +1,125 @@
+---
+title: "2026-11-05_p8157-midterm"
+author: "Chris"
+date: "2026-11-05"
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    number_sections: TRUE
+    theme: cosmo
+    css: style.css
+---
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+
+load("data/Six Cities.RData")
+```
+
+
+
+# question a
+
+```{r}
+# Compute the outcome and retain girls with at least five usable visits.
+analysis_data <- topeka |>
+  transmute(
+    subject_id = id,
+    age_years = age,
+    height_m = height,
+    log_fev1 = log.FEV1
+  ) |>
+  filter(
+    !is.na(subject_id),
+    is.finite(age_years),
+    is.finite(height_m),
+    height_m > 0,
+    is.finite(log_fev1)
+  ) |>
+  mutate(fev1_over_height_sq = exp(log_fev1) / height_m^2) |>
+  group_by(subject_id) |>
+  filter(n() >= 5) |>
+  ungroup()
+```
+
+
+
+```{r}
+# Randomly select four eligible girls without replacement.
+set.seed(202611)
+eligible_ids <- unique(analysis_data$subject_id)
+selected_ids <- sample(eligible_ids, size = 4, replace = FALSE)
+
+trajectory_data <- analysis_data |>
+  filter(subject_id %in% selected_ids) |>
+  mutate(subject_id = factor(subject_id))
+```
+
+
+```{r}
+# Plot all eligible observations and highlight the four selected trajectories.
+plot_a <- ggplot(analysis_data, aes(x = age_years, y = fev1_over_height_sq)) +
+  geom_point(colour = "grey60", alpha = 0.35, size = 1.4) +
+  geom_line(
+    data = trajectory_data,
+    aes(group = subject_id, colour = subject_id),
+    linewidth = 0.9
+  ) +
+  geom_point(
+    data = trajectory_data,
+    aes(colour = subject_id),
+    size = 1.8
+  ) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(
+    x = "Age (years)",
+    y = expression(FEV[1] / height^2),
+    colour = "Subject ID"
+  ) +
+  theme_classic()
+
+print(plot_a)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
